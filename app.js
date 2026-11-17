@@ -7,7 +7,9 @@ function localDay(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()
 function plusDays(s,n){const [y,m,d]=s.split('-').map(Number);const t=new Date(y,m-1,d,12);t.setDate(t.getDate()+n);return localDay(t)}
 const DEFAULT_PREFS={dailyLimit:2,priority:'review',newLimit:1};
 function prefs(){const p=data.preferences||{};return {dailyLimit:Math.max(1,Math.min(10,Number(p.dailyLimit)||2)),priority:p.priority==='new'?'new':'review',newLimit:Math.max(0,Math.min(10,Number.isInteger(Number(p.newLimit))?Number(p.newLimit):1))}}
-function defaultUnits(){return VERIFIED_UNITS.map(u=>({...u}))}
+function standardTitle(id){return `TOEIC Listening ${String(id).padStart(2,'0')}`}
+function normalizeUnitTitles(v){if(Array.isArray(v.units))v.units=v.units.map((u,i)=>({...u,title:standardTitle(u.id??i+1)}))}
+function defaultUnits(){return VERIFIED_UNITS.map(u=>({...u,title:standardTitle(u.id)}))}
 function initial(){const v={units:defaultUnits(),records:{},nextUnit:6,started:'2026-11-17',dailyNew:{},history:[],profileApplied:'2026-11-17',preferences:{...DEFAULT_PREFS},inProgress:[]};applyKnownProgress(v);return v}
 function applyKnownProgress(v){
   const day='2026-11-17';
@@ -24,11 +26,11 @@ function applyKnownProgress(v){
 function load(){try{let v=JSON.parse(localStorage.getItem(KEY));if(v&&Array.isArray(v.units)&&v.records&&v.dailyNew&&Array.isArray(v.history)){
   // Upgrade placeholders from v1/v2 to the 50 verified TOEIC videos; retain progress.
   if(v.units.length===50&&v.units.every((u,i)=>u.id===i+1&&(u.url===PLAYLIST||u.url===VERIFIED_UNITS[i].url)))v.units=defaultUnits();
-  return v;
+  normalizeUnitTitles(v);return v;
  }}catch(e){}return initial()}
 let data=load();if(!data.preferences)data.preferences={...DEFAULT_PREFS};if(!Array.isArray(data.inProgress))data.inProgress=[];function save(){localStorage.setItem(KEY,JSON.stringify(data));render();window.dispatchEvent(new Event('english-daily-changed'))}
 window.englishDailyExport=()=>structuredClone(data);
-window.englishDailyReplace=(v)=>{if(!Array.isArray(v.units)||!v.records||!v.dailyNew||!Array.isArray(v.history)||!Number.isInteger(v.nextUnit))throw Error('無效的進度資料');data=structuredClone(v);localStorage.setItem(KEY,JSON.stringify(data));render()};
+window.englishDailyReplace=(v)=>{if(!Array.isArray(v.units)||!v.records||!v.dailyNew||!Array.isArray(v.history)||!Number.isInteger(v.nextUnit))throw Error('無效的進度資料');data=structuredClone(v);normalizeUnitTitles(data);localStorage.setItem(KEY,JSON.stringify(data));render()};
 const record=id=>data.records[id];
 function today(){return localDay()}
 function isDone(id,date=today()){return data.history.some(h=>h.id===id&&h.date===date)}
@@ -99,10 +101,8 @@ function render(){
  if(done.length){html+='<h3 style="margin-top:20px">今天已完成（可取消）</h3>';html+=done.map(h=>{const u=data.units.find(u=>u.id===h.id);return u?completedHtml(u,h.type):''}).join('')}
  if(!plan.newly.length&&!plan.review.length&&!done.length)html='<div class="empty">今天沒有指派任務，可以休息，或從「單元」提前學習 🎉</div>';
  $('#todayTasks').innerHTML=html;
- $('#unitList').innerHTML=data.units.map(u=>{const r=record(u.id);const desc=r?(r.due?`#${u.id} · 下次 ${r.due} 為第 ${r.stage+1}/5 次複習`:`#${u.id} · 已完成全部 5 次複習`):`#${u.id} · 尚未學習`;return `<div class="item unit-item"><div class="unit-main"><a class="unit-open unit-open-full" href="${safe(validUrl(u.url))}" target="_blank" rel="noopener" aria-label="開啟 ${safe(u.title)} 的 YouTube 影片"><b>${safe(u.title)}</b><span class="muted small unit-one-line">${desc}</span></a>${r?`<button class="btn secondary unit-reset" data-do="restart" data-id="${u.id}">↻ 重置複習週期</button>`:`<button class="btn unit-reset unit-complete" data-do="advance" data-id="${u.id}">完成新學</button>`}</div></div>`}).join('');
- let upcoming=[];for(let i=0;i<14;i++){const day=plusDays(d,i);const reviews=data.units.filter(u=>{const r=record(u.id);return r&&r.due===day}).map(u=>`#${u.id}`);const assigned=newAssignments(day);upcoming.push(`<div class="item"><b>${niceDate(day)}</b><div class="small muted">${assigned.length?'已指派新學 '+assigned.map(x=>'#'+x).join('、')+' · ':''}${reviews.length?'到期 '+reviews.join('、'):'無當天到期複習'}${i>0?' · 實際每日指派依上限與優先順序決定':''}</div></div>`)}$('#calendarList').innerHTML=upcoming.join('');
+ $('#unitList').innerHTML=data.units.map(u=>{const r=record(u.id);const desc=r?(r.due?`下次 ${r.due} 為第 ${r.stage+1}/5 次複習`:`已完成全部 5 次複習`):`尚未學習`;return `<div class="item unit-item"><div class="unit-main"><a class="unit-open unit-open-full" href="${safe(validUrl(u.url))}" target="_blank" rel="noopener" aria-label="開啟 ${safe(u.title)} 的 YouTube 影片"><b>${safe(u.title)}</b><span class="muted small unit-one-line">${desc}</span></a>${r?`<button class="btn secondary unit-reset" data-do="restart" data-id="${u.id}">↻ 重置複習週期</button>`:`<button class="btn unit-reset unit-complete" data-do="advance" data-id="${u.id}">完成新學</button>`}</div></div>`}).join('');
  $('#startUnit').value=data.nextUnit;$('#dailyLimit').value=String(plan.settings.dailyLimit);$('#priorityMode').value=plan.settings.priority;$('#newLimit').value=String(plan.settings.newLimit);
- $('#priorGrid').innerHTML=data.units.map(u=>`<label><input type="checkbox" class="prior" value="${u.id}" ${record(u.id)?'disabled':''}>#${u.id} ${record(u.id)?'✓':''}</label>`).join('');
 }
 function validUrl(url){try{let u=new URL(url);return u.protocol==='https:'&&(['youtube.com','www.youtube.com','youtu.be','m.youtube.com'].includes(u.hostname))?u.href:PLAYLIST}catch(e){return PLAYLIST}}
 function completedHtml(u,type){return `<div class="task done-task"><div class="row"><span class="pill">✓ ${type==='new'?'今日新學':'今日複習'}已完成</span><button class="btn secondary" data-do="undo" data-id="${u.id}">↶ 取消完成</button></div><h3>${safe(u.title)}</h3><div class="small muted">如按錯，可取消完成並恢復先前進度。</div><a target="_blank" rel="noopener" href="${safe(validUrl(u.url))}">▶ 播放影片</a></div>`}
@@ -112,10 +112,9 @@ document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()
 $('#applyProgress').addEventListener('click',()=>{if(!confirm('套用：單元 1～5 已學習、11/17 已複習 1、2、下一個新學單元 6？這會改寫 1～5 的進度，建議先匯出備份。'))return;data.history=data.history.filter(h=>h.id>5);applyKnownProgress(data);delete data.dailyNew[today()];save();alert('已套用你的進度')});
 $('#savePreferences').addEventListener('click',()=>{data.preferences={dailyLimit:Number($('#dailyLimit').value),priority:$('#priorityMode').value,newLimit:Number($('#newLimit').value)};save();alert('每日任務設定已儲存。已完成的任務不受影響。')});
 $('#setStart').addEventListener('click',()=>{let n=Number($('#startUnit').value);if(!Number.isInteger(n)||n<1||n>data.units.length){alert('請輸入有效的單元編號');return}data.nextUnit=n;delete data.dailyNew[today()];save();alert('已更新下一個新單元')});
-$('#addPrior').addEventListener('click',()=>{let ids=[...document.querySelectorAll('.prior:checked')].map(x=>Number(x.value));if(!ids.length){alert('請先勾選單元');return}ids.forEach(id=>{if(!record(id))data.records[id]={firstDate:'先前已學',stage:0,due:plusDays(today(),1),lastRating:'先前已學習'}});save();alert(`已加入 ${ids.length} 個先前學過的單元，從明天開始複習`)});
 function parseImport(raw){let parsed;try{parsed=JSON.parse(raw)}catch(e){}let list;if(Array.isArray(parsed))list=parsed.map((x,i)=>({title:x.title||`單元 ${i+1}`,url:x.url||PLAYLIST}));else list=raw.split(/\r?\n/).map(x=>x.trim()).filter(Boolean).map((line,i)=>{const cols=line.split('\t');if(cols.length>1)return {title:cols.slice(0,-1).join(' ').trim(),url:cols.at(-1).trim()};if(/^https?:\/\//.test(line))return {title:`單元 ${String(i+1).padStart(2,'0')}`,url:line};return {title:line,url:PLAYLIST}});return list.filter(x=>x.title&&x.url&&x.url.startsWith('https://')).map((x,i)=>({id:i+1,title:String(x.title).slice(0,200),url:validUrl(x.url)}))}
-$('#importUnits').addEventListener('click',()=>{let list=parseImport($('#importText').value);if(!list.length){alert('沒有讀取到有效單元。請貼上影片標題、網址或 JSON。');return}if(!confirm(`即將以 ${list.length} 個單元替換現有清單。已有紀錄會按編號保留；確認匯入？`))return;data.units=list;data.nextUnit=Math.min(data.nextUnit,list.length+1);save();alert(`成功匯入 ${list.length} 個單元`)});
+$('#importUnits').addEventListener('click',()=>{let list=parseImport($('#importText').value);if(!list.length){alert('沒有讀取到有效單元。請貼上影片標題、網址或 JSON。');return}if(!confirm(`即將以 ${list.length} 個單元替換現有清單。已有紀錄會按編號保留；確認匯入？`))return;data.units=list;normalizeUnitTitles(data);data.nextUnit=Math.min(data.nextUnit,list.length+1);save();alert(`成功匯入 ${list.length} 個單元`)});
 $('#exportData').addEventListener('click',()=>{let blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});let a=document.createElement('a');let url=URL.createObjectURL(blob);a.href=url;a.download=`english-daily-backup-${today()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),3000)});
-$('#restoreBtn').addEventListener('click',()=>$('#restoreInput').click());$('#restoreInput').addEventListener('change',async ev=>{let file=ev.target.files?.[0];if(!file)return;try{let v=JSON.parse(await file.text());if(!Array.isArray(v.units)||!v.records||!v.dailyNew||!Array.isArray(v.history)||!Number.isInteger(v.nextUnit))throw Error('格式不正確');if(!confirm('要用備份取代現有資料嗎？'))return;data=v;save();alert('備份已還原')}catch(e){alert('無法匯入備份：'+e.message)}ev.target.value=''});
+$('#restoreBtn').addEventListener('click',()=>$('#restoreInput').click());$('#restoreInput').addEventListener('change',async ev=>{let file=ev.target.files?.[0];if(!file)return;try{let v=JSON.parse(await file.text());if(!Array.isArray(v.units)||!v.records||!v.dailyNew||!Array.isArray(v.history)||!Number.isInteger(v.nextUnit))throw Error('格式不正確');if(!confirm('要用備份取代現有資料嗎？'))return;data=v;normalizeUnitTitles(data);save();alert('備份已還原')}catch(e){alert('無法匯入備份：'+e.message)}ev.target.value=''});
 $('#resetAll').addEventListener('click',()=>{if(confirm('確定清除全部學習紀錄？此操作無法復原（除非已有備份）。')){data=initial();save()}});
 render();if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('./sw.js').catch(()=>{});
