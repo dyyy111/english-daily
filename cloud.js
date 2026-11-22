@@ -17,7 +17,7 @@ function pending(v){localStorage.setItem(pendingKey,v?'1':'0')}
 function isPending(){return localStorage.getItem(pendingKey)==='1'}
 function baseline(){try{return JSON.parse(localStorage.getItem(baseKey)||'null')}catch{return null}}
 function putBase(v){localStorage.setItem(baseKey,JSON.stringify(v))}
-const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const same=(a,b)=>{try{return window.englishDailyComparable(a)===window.englishDailyComparable(b)}catch(e){return false}};
 async function loadSdk(){if(window.supabase?.createClient)return;await new Promise((resolve,reject)=>{let s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';s.onload=resolve;s.onerror=()=>reject(Error('無法載入 Supabase SDK，請確認網路連線'));document.head.appendChild(s)});if(!window.supabase?.createClient)throw Error('Supabase SDK 未載入')}
 async function readCloud(){const {data,error}=await client.from('learning_state').select('state,version').eq('user_id',user.id).maybeSingle();if(error)throw error;return data}
 async function writeCloud(payload,expected){const {data,error}=await client.rpc('save_learning_state',{p_state:payload,p_expected_version:expected});if(error)throw error;return data}

@@ -18,6 +18,21 @@ function normalizeUnitTitles(v){
  const unknown=[...new Set(v.units.map(u=>u.courseId).filter(id=>!v.courses.some(c=>c.id===id)))];
  unknown.forEach(id=>v.courses.push({id,title:id==='other'?'其他教材':id}));
 }
+// Convert historical single-course backups into the current multi-course structure.
+// This migration only adds display metadata; it never deletes video, progress, or history.
+function normalizeSnapshot(v){
+ if(!v||!Array.isArray(v.units)||!v.records||!Array.isArray(v.history)||!v.dailyNew)throw Error('進度資料格式不正確');
+ const out=structuredClone(v);normalizeUnitTitles(out);
+ return out;
+}
+// Compare migrated snapshots by content rather than JSON object insertion order.
+// An old-format backup and its new-format equivalent must not cause a false cloud conflict.
+function canonicalSnapshot(v){
+ const n=normalizeSnapshot(v);
+ const canonical=x=>Array.isArray(x)?x.map(canonical):x&&typeof x==='object'?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b)).map(([k,val])=>[k,canonical(val)])):x;
+ return JSON.stringify(canonical(n));
+}
+window.englishDailyComparable=canonicalSnapshot;
 function courseFor(u){return (data.courses||[]).find(c=>c.id===u.courseId)?.title||'其他教材'}
 function defaultUnits(){return VERIFIED_UNITS.map(u=>({...u,title:standardTitle(u.id),courseId:TOEIC_COURSE}))}
 function initial(){const v={courses:[{id:TOEIC_COURSE,title:'TOEIC Listening'}],units:defaultUnits(),records:{},nextUnit:6,started:'2026-11-17',dailyNew:{},history:[],profileApplied:'2026-11-17',preferences:{...DEFAULT_PREFS},inProgress:[]};applyKnownProgress(v);return v}
@@ -40,7 +55,7 @@ function load(){try{let v=JSON.parse(localStorage.getItem(KEY));if(v&&Array.isAr
  }}catch(e){}return initial()}
 let data=load();normalizeUnitTitles(data);if(!data.preferences)data.preferences={...DEFAULT_PREFS};if(!Array.isArray(data.inProgress))data.inProgress=[];function save(){localStorage.setItem(KEY,JSON.stringify(data));render();window.dispatchEvent(new Event('english-daily-changed'))}
 window.englishDailyExport=()=>structuredClone(data);
-window.englishDailyReplace=(v)=>{if(!Array.isArray(v.units)||!v.records||!v.dailyNew||!Array.isArray(v.history)||!Number.isInteger(v.nextUnit))throw Error('無效的進度資料');data=structuredClone(v);normalizeUnitTitles(data);localStorage.setItem(KEY,JSON.stringify(data));render()};
+window.englishDailyReplace=(v)=>{if(!Number.isInteger(v?.nextUnit))throw Error('無效的進度資料');const restored=normalizeSnapshot(v);data=restored;localStorage.setItem(KEY,JSON.stringify(data));render()};
 const record=id=>data.records[id];
 function today(){return localDay()}
 function isDone(id,date=today()){return data.history.some(h=>h.id===id&&h.date===date)}
@@ -97,6 +112,9 @@ function restartCycle(id){
 function safe(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function niceDate(s){const t=new Date(s+'T12:00:00');return `${t.getMonth()+1}/${t.getDate()}（${'日一二三四五六'[t.getDay()]}）`}
 function render(){
+ const required=['doneNum','totalNum','progressBar','dailySummary','streak','todayTasks','courseSelect','unitList','overallStats','courseStats','dailyLimit','priorityMode','newLimit'];
+ const missing=required.filter(id=>!document.getElementById(id));
+ if(missing.length){console.error('English Daily v13 UI version mismatch; missing:',missing);return;}
  const d=today();
  const plan=dayPlan(d), done=data.history.filter(h=>h.date===d), completedIds=[...new Set(done.map(h=>h.id))];
  const total=plan.newly.length+plan.review.length+completedIds.length;
@@ -116,8 +134,11 @@ function render(){
  const courseSelect=$('#courseSelect');
  const selectedCourse=courseSelect.value;
  const availableCourses=data.courses.filter(c=>data.units.some(u=>u.courseId===c.id));
- courseSelect.innerHTML=availableCourses.map(c=>`<option value="${safe(c.id)}">${safe(c.title)}（${data.units.filter(u=>u.courseId===c.id).length} 部）</option>`).join('');
- if(availableCourses.some(c=>c.id===selectedCourse))courseSelect.value=selectedCourse;
+ // Self-heal missing classification from older local storage without clearing progress.
+ if(!availableCourses.length&&data.units.length){normalizeUnitTitles(data);}
+ const shownCourses=data.courses.filter(c=>data.units.some(u=>u.courseId===c.id));
+ courseSelect.innerHTML=shownCourses.map(c=>`<option value="${safe(c.id)}">${safe(c.title)}（${data.units.filter(u=>u.courseId===c.id).length} 部）</option>`).join('');
+ if(shownCourses.some(c=>c.id===selectedCourse))courseSelect.value=selectedCourse;
  const courseId=courseSelect.value;
  const items=data.units.filter(u=>u.courseId===courseId);
  $('#unitList').innerHTML=items.map(u=>{
@@ -198,4 +219,4 @@ function forecastNewDates(){
 $('#exportData').addEventListener('click',()=>{let blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});let a=document.createElement('a');let url=URL.createObjectURL(blob);a.href=url;a.download=`english-daily-backup-${today()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),3000)});
 $('#restoreBtn').addEventListener('click',()=>$('#restoreInput').click());$('#restoreInput').addEventListener('change',async ev=>{let file=ev.target.files?.[0];if(!file)return;try{let v=JSON.parse(await file.text());if(!Array.isArray(v.units)||!v.records||!v.dailyNew||!Array.isArray(v.history)||!Number.isInteger(v.nextUnit))throw Error('格式不正確');if(!confirm('要用備份取代現有資料嗎？'))return;data=v;normalizeUnitTitles(data);save();alert('備份已還原')}catch(e){alert('無法匯入備份：'+e.message)}ev.target.value=''});
 $('#resetAll').addEventListener('click',()=>{if(confirm('確定清除全部學習紀錄？此操作無法復原（除非已有備份）。')){data=initial();save()}});
-render();if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('./sw.js').catch(()=>{});
+render();if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('./sw.js?v=13-recovery3').catch(()=>{});
