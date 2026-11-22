@@ -100,7 +100,7 @@ function render(){
  const d=today();
  const plan=dayPlan(d), done=data.history.filter(h=>h.date===d), completedIds=[...new Set(done.map(h=>h.id))];
  const total=plan.newly.length+plan.review.length+completedIds.length;
- $('#doneNum').textContent=completedIds.length;$('#totalNum').textContent=total;$('#dueNum').textContent=plan.review.length;
+ $('#doneNum').textContent=completedIds.length;$('#totalNum').textContent=total;
  $('#progressBar').style.width=`${total?Math.min(100,completedIds.length/total*100):100}%`;
  $('#dailySummary').textContent=`每日最多 ${plan.settings.dailyLimit} 部 · ${plan.settings.priority==='review'?'複習優先':'新片優先'} · 新片最多 ${plan.settings.newLimit} 部`;
  let streak=0,cur=d;while(data.history.some(h=>h.date===cur)){streak++;cur=plusDays(cur,-1)}$('#streak').textContent=`連續 ${streak} 天`;
@@ -108,18 +108,22 @@ function render(){
  if(plan.review.length){html+='<h3>優先複習</h3>'+plan.review.map(u=>taskHtml(u,'review')).join('')}
  if(plan.newly.length){html+='<h3 style="margin-top:20px">新單元</h3>'+plan.newly.map(u=>taskHtml(u,'new')).join('')}
  if(plan.postponed)html+=`<p class="notice">還有 ${plan.postponed} 部到期複習未排入今天。會保留在待複習清單，之後優先安排，不會自動跳過。</p>`;
- if(done.length){html+='<h3 style="margin-top:20px">今天已完成（可取消）</h3>';html+=done.map(h=>{const u=data.units.find(u=>u.id===h.id);return u?completedHtml(u,h.type):''}).join('')}
+ if(done.length){html+='<h3 style="margin-top:20px">已完成</h3>';html+=done.map(h=>{const u=data.units.find(u=>u.id===h.id);return u?completedHtml(u,h.type):''}).join('')}
  if(!plan.newly.length&&!plan.review.length&&!done.length)html='<div class="empty">今天沒有指派任務，可以休息，或從「單元」提前學習 🎉</div>';
  $('#todayTasks').innerHTML=html;
  const forecasts=forecastNewDates();
- $('#unitList').innerHTML=data.courses.map(c=>{
-  const items=data.units.filter(u=>u.courseId===c.id);
-  if(!items.length)return '';
-  return `<h3 class="subhead">${safe(c.title)} <span class="muted small">(${items.length} 部)</span></h3>`+items.map(u=>{
-   const r=record(u.id);
-   const desc=r?(r.due?`下次 ${r.due} 為第 ${r.stage+1}/5 次複習`:'已完成全部 5 次複習'):`${forecasts[u.id]?'預計 '+forecasts[u.id]+' 第一次學習':'尚未安排首次學習'}`;
-   return `<div class="item unit-item"><div class="unit-main"><a class="unit-open unit-open-full" href="${safe(validUrl(u.url))}" target="_blank" rel="noopener" aria-label="開啟 ${safe(u.title)} 的 YouTube 影片"><b>${safe(u.title)}</b><span class="muted small unit-one-line">${safe(desc)}</span></a>${r?`<button class="btn secondary unit-reset" data-do="restart" data-id="${u.id}">↻ 重置複習週期</button>`:`<button class="btn unit-reset unit-complete" data-do="advance" data-id="${u.id}">完成新學</button>`}</div></div>`;
-  }).join('');
+ // Show one selected course at a time; preserve the selection through re-renders.
+ const courseSelect=$('#courseSelect');
+ const selectedCourse=courseSelect.value;
+ const availableCourses=data.courses.filter(c=>data.units.some(u=>u.courseId===c.id));
+ courseSelect.innerHTML=availableCourses.map(c=>`<option value="${safe(c.id)}">${safe(c.title)}（${data.units.filter(u=>u.courseId===c.id).length} 部）</option>`).join('');
+ if(availableCourses.some(c=>c.id===selectedCourse))courseSelect.value=selectedCourse;
+ const courseId=courseSelect.value;
+ const items=data.units.filter(u=>u.courseId===courseId);
+ $('#unitList').innerHTML=items.map(u=>{
+  const r=record(u.id);
+  const desc=r?(r.due?`下次 ${r.due} 為第 ${r.stage+1}/5 次複習`:'已完成全部 5 次複習'):`${forecasts[u.id]?'預計 '+forecasts[u.id]+' 第一次學習':'尚未安排首次學習'}`;
+  return `<div class="item unit-item"><div class="unit-main"><a class="unit-open unit-open-full" href="${safe(validUrl(u.url))}" target="_blank" rel="noopener" aria-label="開啟 ${safe(u.title)} 的 YouTube 影片"><b>${safe(u.title)}</b><span class="muted small unit-one-line">${safe(desc)}</span></a>${r?`<button class="btn secondary unit-reset" data-do="restart" data-id="${u.id}">↻ 重置複習週期</button>`:`<button class="btn unit-reset unit-complete" data-do="advance" data-id="${u.id}">完成新學</button>`}</div></div>`;
  }).join('');
  renderOverview();
  $('#dailyLimit').value=String(plan.settings.dailyLimit);$('#priorityMode').value=plan.settings.priority;$('#newLimit').value=String(plan.settings.newLimit);
@@ -129,6 +133,7 @@ function completedHtml(u,type){return `<div class="task done-task"><div class="r
 function taskHtml(u,type){let r=record(u.id);let isNew=type==='new';return `<div class="task"><div class="row"><span class="pill">${isNew?'NEW · 今日新學':'REVIEW · 到期複習'}</span><span class="muted small">${safe(u.duration||'')}</span></div><h3>${safe(u.title)}</h3><div class="small muted">${isNew?'完成後開始 +1、+3、+7、+14、+30 天複習週期。':'第 '+(r.stage+1)+'/5 次複習'}</div><div class="actions"><a class="btn secondary" target="_blank" rel="noopener" href="${safe(validUrl(u.url))}" style="text-decoration:none;text-align:center">▶ 開始聽</a>${isNew?`<button class="btn" data-do="complete" data-id="${u.id}" data-kind="new">完成新學</button>`:`<button class="btn" data-do="review-complete" data-id="${u.id}">完成複習</button>`}</div></div>`}
 document.addEventListener('click',ev=>{let b=ev.target.closest('[data-do]');if(!b)return;const id=Number(b.dataset.id);if(b.dataset.do==='complete')complete(id,true);if(b.dataset.do==='review-complete')complete(id,false);if(b.dataset.do==='undo')undo(id);if(b.dataset.do==='restart')restartCycle(id);if(b.dataset.do==='advance'){complete(id,true)}});
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id===b.dataset.tab));window.scrollTo(0,0)}));
+$('#courseSelect').addEventListener('change',render);
 $('#savePreferences').addEventListener('click',()=>{data.preferences={dailyLimit:Number($('#dailyLimit').value),priority:$('#priorityMode').value,newLimit:Number($('#newLimit').value)};save();alert('每日任務設定已儲存。已完成的任務不受影響。')});
 function countMetrics(units){
  const studied=units.filter(u=>Boolean(record(u.id)));
@@ -156,6 +161,8 @@ $('#addCourse').addEventListener('click',()=>{
  if(!confirm(`新增「${name}」共 ${vids.length} 部影片？`))return;
  const id=`course-${Date.now()}`, nextId=Math.max(0,...data.units.map(u=>u.id))+1;
  data.courses.push({id,title:name});
+ $('#courseSelect').innerHTML+=`<option value="${safe(id)}">${safe(name)}</option>`;
+ $('#courseSelect').value=id;
  data.units.push(...vids.map((v,i)=>({...v,id:nextId+i,courseId:id})));
  if(!data.units.some(u=>u.id===data.nextUnit))data.nextUnit=nextId;
  $('#courseName').value='';$('#courseVideos').value='';$('#courseFeedback').textContent=`已新增 ${name}（${vids.length} 部）。`;
