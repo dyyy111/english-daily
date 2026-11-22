@@ -1,21 +1,20 @@
-# English Daily v11 — 2026-11-17
+# English Daily v12 — 學習總覽／多教材版
 
-## v11 更新
-- 全部 50 部片名統一為 TOEIC Listening 01–50（不含介紹影片），包括既存雲端、本機資料的顯示名稱。影片 URL、單元 ID、完成進度及複習日期均維持原樣。
-- 移除單元卡片次行的 #1 · 等編號前綴。
-- 完全移除「📅 排程」分頁與其計算／呈現程式。
-- 移除「批次標記以前學過的單元」及該按鈕事件；保留「套用我的 1～5 集進度」與起始單元設定。
-- 保留每日指派上限、複習優先／新片優先、+1/+3/+7/+14/+30、完成撤銷、週期重置、卡片點影片及 Supabase 雲端同步。
-- 程式快取改 v11，頁首顯示 v11 方便確認版本。
+## 新增與調整
+- 新增「📊 總覽」獨立頁面；總覽與每套教材卡片全部展開。
+- 顯示新單元完成率和整體學習完成率，以及已學過、完成複習次數、尚未學習。
+- 整體完成率依目前有效的複習輪次計算；歷史完成複習次數另外統計。
+- 顯示複習週期 +1、+3、+7、+14、+30 天。
+- 單元頁新增「新增教材」，可用影片清單逐行匯入新課程。每套教材獨立統計，但每日指派上限是所有教材合計。
+- 移除首頁日期列；版本 v12 與 English Daily 放同一列最右側。
+- 未開始影片顯示「預計 YYYY-MM-DD 第一次學習」，隨排程模擬計算。
+- 移除設定頁的「設定與學過的單元」、「影片清單」；保留原有每日指派、Supabase 登入同步、JSON 備份還原。
+- 50 部 TOEIC 影片與既有進度沿用，且不含介紹影片。
 
-## GitHub Pages 更新
-1. 更新前到 App 設定匯出一次 JSON 備份。
-2. 解壓縮 ZIP，把裡面的所有檔案**直接上傳到 GitHub repository 根目錄**，覆蓋舊檔，不要上傳 ZIP 或多包一層資料夾。
-3. Commit changes，等 GitHub Pages 部署完成，重新載入 `https://dyyy111.github.io/english-daily/?v=11`。
-4. 如仍見舊版，使用 Safari 私密分頁核對；iPhone 主畫面 PWA 可能仍有舊快取。
+## 使用方式
+1. 原 App 設定匯出 JSON 備份。
+2. 解壓 ZIP，將所有檔案放到 GitHub Pages repository **根目錄**。
+3. 等 GitHub Pages 部署完成，從 `?v=12` 網址重新整理。
+4. 不需重建 Supabase 資料表，因同步資料仍保存在原先的 `state` JSON 欄位。
 
-## 儲存與安全
-個人學習紀錄預設保存在 localStorage；完成 Supabase 連線／登入且同步成功後會自動備份。不要把 JSON 個人紀錄、secret/service_role key、密碼上傳公開 GitHub。
-
-## 檔案
-index.html, app.js, playlist.js, cloud.js, supabase-config.js, sw.js, manifest.webmanifest, icon PNG, supabase-setup.sql, README.md。
+注意：新課程影片必須提供各部獨立 YouTube 網址。若 iPhone 顯示舊版，請確認網站與 Service Worker 快取已更新。學習日期為預估，會隨完成／重置更新。不要將包含個人學習進度的 JSON 上傳到 Public GitHub repository。
